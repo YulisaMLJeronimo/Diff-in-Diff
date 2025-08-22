@@ -1,0 +1,486 @@
+---
+title: "Does the Policy on Sex Work in Australia Change the Number of HIV Cases Reported?"
+author: "Yulisa  M. Lopez Jeronimo"
+format: html
+editor: visual
+---
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+pacman::p_load(tidyverse,readr,dplyr,broom,sandwich,stargazer,ggplot2,lmtest,modelsummary,janitor, magrittr)
+
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+Aus <-read_csv("Australian-HIV-Public-Access-Dataset_2023.csv")
+
+Aus%<>%rename(State = "State/Territory", Exposure = "Exposure category", diagnosis_year = "Year of first HIV diagnosis")
+
+Aus[] <- lapply(Aus, function(col){
+  if(is.character(col))gsub("/","_",col) else col})
+#unique(Aus$Sex)
+
+Aus2<- Aus %>% 
+  group_by(diagnosis_year, State) %>% 
+  summarize(num_diagnosis = n(), .groups = "drop")
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+pop <- read.csv("population.csv")
+pop.c <- pop %>%
+  filter(grepl("^[Dec]", year, ignore.case = TRUE)) %>%
+  select(year,NSW, VIC,QLD,SA,WA,TAS,NT,ACT) %>% 
+  mutate(ACT_NSW = ACT + NSW,
+         NT_SA = NT + SA,
+         TAS_VIC = TAS + VIC)
+  pop.c[] <- lapply(pop.c, function(col){
+  if(is.character(col))gsub("Dec-","",col) else col})
+  
+pop.c$year <- as.numeric(pop.c$year)
+
+calculate_percentage <- function(data){
+  data %>% 
+    rowwise() %>% 
+    mutate(
+      percentage = num_diagnosis / get(State)) %>% 
+    ungroup()}
+
+Aus3 <- calculate_percentage(Aus2 %>% left_join(pop.c,
+                   by = c("diagnosis_year" = "year")))
+```
+
+## Introduction:
+
+The relationship between sex work policies and public health outcomes, such as the prevalence of HIV, is a topic of significant academic and policy interest. Due to the controversy surrounding sex work, policies can become complex when they allow some actions but not others, such as legalizing indoor but not outdoor sex work, or allowing the selling of sexual services but not purchasing (and vice versa), allowing solo operation but prohibiting brothels, etc. (Karlsson, 2022). Few countries adopt progressive policies to control and learn about this market. The three main policy approaches are full or partial legalization (certain aspects of sex work are allowed under the law, while others remain illegal), partial or full decriminalization (engaging in consensual sexual services is not a crime, and small penalties are assigned), and criminalization (engaging in the purchase or sale of sexual services is a crime under the law, and harsh punishments are assigned).
+
+These differing approaches create unique environments for sex work and influence how they affect the spread and management of HIV. Public health advocates such as Minichiello et al. (2018) argue that decriminalization improves access to health services and lowers HIV transmission rates among sex workers and their clients. Conversely, Vanwesenbeeck (2017) argues that restrictive policies may hinder harm reduction efforts, potentially leading to higher STD infection rates due to poor working conditions. This paper explores how Australia's diverse legal frameworks on sex work impact the number of HIV diagnoses, providing insights into the broader implications for public health policy. My hypothesis is , the number of HIV reports changes when the policy on sex work becomes more progressive because it allows better access to healthcare, healthier behaviors, and clean working environments.
+
+This topic matters because the decriminalization or legalization of sex work could improve access to healthcare for sex workers, who often face stigma, discrimination, and legal consequences for pursuing an unconventional profession. Additionally, sex workers can increase regular testing and treatment for HIV and other STIs. Outreach and public health campaigns targeted at sex workers become more effective under progressive policies, as they are no longer marginalized.
+
+Moreover, working conditions and customer service become safer due to the regulation of working environments, reducing risky behaviors such as unprotected sex since sex workers can negotiate condom use more freely without coercion, ultimately leading to a decrease in HIV transmission. Progressive policies could also reduce exploitation since workers won’t feel dependent on third parties (e.g., pimps), can refuse unsafe clients, and lower their risk of contracting HIV. Additionally, if sex workers are protected under the law, there might be fewer unreported HIV cases because people would feel comfortable seeking healthcare, thereby reducing the spread of the virus, which criminalizing policies tend to suppress by imposing punishments on these services.
+
+## Methodology:
+
+This blog post focuses on Australia, as it has diverse policy reforms for sex work in different states and years, which will help us identify any differences in the number of people diagnosed with HIV before and after the policy changes in each state. For context, Australia is divided into six states: New South Wales (NSW), Victoria (VIC), Queensland (QLD), Western Australia (WA), South Australia (SA), and Tasmania (TAS), along with the Northern Territory (NT) and the Australian Capital Territory (ACT), which is an internal territory in NSW.
+
+The data comes from annual HIV reports by the Kirby Institute. The reports from some states are combined due to small annual number of diagnoses in a few areas, which is an upfront weakness in my blog, as it could obscure important regional variations in HIV diagnosis trends. Since some states within these groupings have different trends and meaningful differences in their policies, this could potentially mislead my conclusions. The observations are organized as follows: ACT and NSW; NT and SA; TAS and VIC; and the states not combined are QLD and WA. In addition I will also use the state and territory population from the Australian Bureau of Statistics in order to make the annual HIV reports across states comparable.
+
+The compilation of HIV reports per area goes back to 1980, with the latest report from 2023. In the beginning, sex work was illegal in all states. Throughout the years, policies have had multiple changes in each state that will not be covered in this blog, and for simplicity, I will focus on the following: in 1995, ACT (which is located in NSW) decriminalized sex work; in 1999 QLD partially legalized sex work; in 2005 TAS made indoor sex work legal, but outdoor selling or organization remained illegal; in 2019 NT decriminalized sex work; SA has had multiple attempts to change the policy, with no success so far; and in 2022 VIC transitioned to a decriminalization policy. The only state that has not changed or attempted to become more progressive to sex work is WA, maintaining its criminalization policy. More specifically, in WA selling sex is legal but activities associated with it are not, such as public seeking and soliciting, brothel keeping, living on sex work earnings, through private and individual indoor workers is a grey area. WA will serve as the control state because its HIV reports are not combined with any other state that has a progressive policy, nor has changed its regulation compared to the other states.
+
+Although HIV case reports technically begin in 1980, the population dataset used for standardization begins in 1981. Therefore, 1981 is treated as the analytical start point or "Year 1." This does not compromise the validity of the findings for several reasons. First, HIV reporting was minimal and unreliable in the earliest years, as awareness of the virus only began to emerge globally in the early 1980s (Lucas, 2000). Second, the number of cases reported in 1980 in Australia was negligible, and thus its exclusion should have no meaningful effect on observed trends. Finally, aligning population and HIV data ensures internal consistency and strengthens the reliability of trend comparisons.
+
+To answer my question, I will generate a line graphs per state that change their sex work policy and display the treaded and control trends over the years to observe their behaviors before and after the change. Then, I will generate four regressions in a table corresponding to the treatment each state received in a given year to analyze any effects on HIV diagnoses per population based on the new policy. Then I will perform a placebo test for the state that displays significant effects to support such findings. Lastly, I will use a bar graph to display the most common forms of HIV infection to provide insight on the relationship between HIV and sex work, as well as some weaknesses in my report.
+
+## Analysis:
+
+This graph below shows the percentage of all the reports over the years to visualize the direction of the trends and identify any changes as Australian states give sex workers more protection under the law. It appears that there are certain years when more people are diagnosed with HIV than others, but overall the trends are decreasing. At the begging of the trend there's a sharp increase in cases as the knowledge about HIV started to spread out, also leading to more doctors diagnosing their patients with such. The trend of NSW (ACT is in NSW) shows that more people were diagnosed compared to the rest of the states until 2008, the gap between state percentages becomes very small. In addition, the states of NT and SA (green) and WA (magenta) have consistently reported low numbers relative to the rest of the states. Lastly, the number of reports relative to their corresponding populations is very small leads to very small percentages, in which 1e-4 is the same as 0.0001.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+ggplot(Aus3,aes(x = diagnosis_year, y = percentage, color = State))+
+  geom_line(size = 1.2)+
+  geom_vline(xintercept = c(1995,1999, 2005,2019), linetype = "dashed")+
+  scale_color_manual(values = c("ACT_NSW" = "red",
+                                "NT_SA" = "green",
+                                "QLD" = "orange",
+                                "TAS_VIC" = "dodgerblue",
+                                "WA" = "magenta"))+
+  annotate("text", x = c(1995,1999,2005,2019), y = c(0.0002,0.0002,0.0002,0.0002),label = c(1995,1999,2005,2019),angle = 45)+
+  labs(title= " Percentage of Diagnosis per Year",
+        caption= " The years labled indicate when a policy changed in one of the states of Australia",
+        x= "Year of Diagnosis of HIV",
+        y= "Percentage of People Diagnosis") +
+  theme_minimal()
+```
+
+The following four graphs show the percentage of reports of the territories where the policy changed in comparison to the reports of the control state (WA) where sex work is criminalized, before and after. One key assumption underlying these graphs is that it takes time for individuals within a given area to become aware of a new policy. The larger the area affected, the longer this diffusion of information may take. Therefore, the dashed line indicating the start of the treatment period is placed one year after the policy's implementation. Additionally, no immediate changes in HIV reports are expected in the year the policy was introduced.
+
+On the graph below, the treatment is the decriminalization of sex work in ACT and NSW in 1995. The percentage of diagnoses in ACT and NSW relative to WA is huge, but we can still observe that a year before the policy passed (1994) there was a spike in the percentage of diagnoses in WA relative to a couple of years before and after, in addition, the percentages were around the same for those years, which could be an indicator that something happened during those years that more people go diagnosed. For ACT and NSW, before and after the policy, there was an overall decrease in the percentage of of cases diagnosed, except for the year when the policy was approved, there is spike in the percentage of people reported with HIV. Between 2002 and 2015 the trend for WA was increasing while in ACT and NSW the trend had a positive slope between 2001 and 2005, after those periods the percentages were trending negatively, Lastly, since 2019, both territories began reporting very similar percentages relative to their respective populations. These results might represent the long term effect of the policy and a baseline for the number of years in which we should wait to evaluate policies that move away from present perspectives on sex work.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+aus2_ACT_NSW <- Aus3 %>% 
+  filter(State %in% c("ACT_NSW", "WA")) %>%  #, diagnosis_year>= 1983)%>% 
+  mutate(treated3 = ifelse(State == "ACT_NSW", 1, 0),
+         post_1995 = ifelse(diagnosis_year>= 1995, 1,0),
+         did_interaction3 = treated3 * post_1995)
+
+ggplot(data= aus2_ACT_NSW,
+       mapping = aes(x =diagnosis_year,
+                     y =percentage,
+                     color =State))+
+  geom_point(position = position_jitter(width = 0))+
+  geom_vline(xintercept = 1996,
+             linetype = "dashed") +
+  annotate("text", x = 1996,
+           y = 0.0003,label = 1996,
+           angle = 360)+
+  geom_line()+
+  scale_color_manual( values = c(
+      "ACT_NSW" = "red",
+      "WA" = "magenta" ))+
+  labs(title = "Number of Diagnosis per Year",
+    subtitle = "Impact of Decriminalization Policy for Sex Work on HIV Diagnoses in ACT & NSW vs WA in 1995",
+    x = "Year of Diagnosis",
+    y = "Number of Diagnoses",
+    color = "State")+
+  theme_minimal()
+```
+
+```{r}
+#| eval: false
+#| message: false
+#| warning: false
+#| include: false
+# aus2_ACT_NSW2<- Aus3 %>% 
+#   filter(State %in% c("ACT_NSW", "WA"), diagnosis_year>= 1990, diagnosis_year<= 2000
+#          )%>% 
+#   mutate(treated3 = ifelse(State == "ACT_NSW", 1, 0),
+#          post_1995 = ifelse(diagnosis_year>= 1995, 1,0),
+#          did_interaction3 = treated3 * post_1995)
+
+ggplot(data= aus2_ACT_NSW,
+       mapping = aes(x =diagnosis_year, y =percentage, color =State))+
+  geom_point(position = position_jitter(width = 0))+
+  coord_cartesian(xlim = c(1993, 2023), ylim = c(0,0.00011))+
+  geom_vline(xintercept = 1996,linetype = "dashed") +
+  annotate("text", x = 1996, y = 0.0001,label = 1996,angle = 360)+
+  geom_line()+
+  scale_color_manual( labels = c ("ACT & NSW", "WA"),values = c("red", "magenta" )) +
+  labs(title = "Number of Diagnosis per Year in  ACT, NSW and WA zoomed in",
+    subtitle = "Impact of Decriminalization of Sex Work on HIV Diagnoses in ACT & NSW vs WA in 1995",
+    x = "Year of Diagnosis",
+    y = "Number of Diagnoses",
+    color = "State")+
+  theme_minimal()
+```
+
+In this next graph, the treatment is a partial legalization of sex work in QLD, which allowed for brothel prostitution and single operators through a licensing system, WA is still the control state. We can observe how these two states seem to follow a similar trend throughout the years. Before the 1999 policy passed, both states had decreasing trends and after the policy until 2015, both states experienced increases in the percentage of their population diagnosed with HIV. This behavior may reflect increased comfort in seeking healthcare that lead to HIV testing, rather than a true rise in infection rates due to the policy since the increases are observed in both states.
+
+After 2015, the trends shifted again and the percentages have been decreasing since. However, between 2019 and 2022, QLD had lower percentages relative to WA; this is interesting because in the years prior, QLD's percentages were always bigger than WA's ( except in the early years; which could be due to other factors such as population, diagnosis rate or healthcare accessibility).
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+aus2_QLD<- Aus3 %>% 
+  filter(State %in% c("QLD", "WA"))%>% 
+  mutate(treated2 = ifelse(State == "QLD", 1, 0),
+         post_1999 = ifelse(diagnosis_year>= 1999, 1,0),
+         did_interaction2 = treated2 * post_1999)
+
+ggplot(data= aus2_QLD,
+       mapping = aes(x =diagnosis_year, y =percentage, color =State))+
+  geom_point()+
+  geom_vline(xintercept = 2000,linetype = "dashed")+
+  geom_line()+
+  annotate("text", x = 2000, y = 0.000065,label = 2000,angle = 360) +
+  scale_color_manual( values = c("QLD" = "orange","WA" = "magenta" ))+
+  labs(title = "Number of Diagnosis Annually in QLD and WA",
+    subtitle = "Impact of Partial Legalization Policy for Sex Work on HIV Diagnoses in 1999",
+    x = "Year of Diagnosis",
+    y = "Number of Diagnoses",
+    color = "State")+
+  theme_minimal()
+```
+
+In addition, in 2019 was also the same year that ACT and NSW started to report very similar (or slightly lower) percentages. In the same fashion, in 2023 QLD surpassed WA's percetage, though the difference between QLD and WA compared to the difference between ACT and NSW and WA is bigger which might be the indicator of another factor. Perhaps, in 2023, the healthcare system was only catching up to the actual number of people living with HIV who had been infected during the 2020 COVID pandemic. Considering that during the pandemic, there was low medical staff for medical services since everyone focused on treating and diagnosing COVID-19.
+
+```{r}
+combined3 <- Aus3 %>% 
+  filter(State %in% c("QLD", "WA", "ACT_NSW"))
+
+ggplot(data= combined3,
+       mapping = aes(x =diagnosis_year, y =percentage, color =State))+
+  coord_cartesian(xlim = c(1994, 2023), ylim = c(0,0.00011))+
+  geom_point()+
+   geom_line()+
+ geom_vline(xintercept = c(1996,2000),linetype = "dashed")+
+  annotate("text", x = c( 1996,2000), y = 0.00009,label = c("Decriminalization", "Partial legal"),angle = 45 , size = 3
+           ) +
+  #scale_color_manual( values = c("QLD" = "orange","WA" = "magenta", "ACT_NSW" = "red" ))+
+  scale_color_manual( labels = c ("ACT & NSW","QLD", "WA"),values = c("red", "orange", "magenta"))+
+  labs(title = "Number of Diagnosis Annually in ACT & NSW,QLD and WA",
+    x = "Year of Diagnosis",
+    y = "Number of Diagnoses",
+    color = "State")+
+  theme_minimal()
+```
+
+For TAS and VIC territories, in 2005 the policy placed in TAS allowed solo operation and indoor sex work, everything else was illegal Just recently the policy changed in VIC in 2022 to decriminalization of sex work but due to the lack of data, I will not analyze this change in depth. Thus, we observe that both trends switched from negative to positive in 1999. By 2006, the trend was still increasing but not as fast as the years prior and by 2015 the trends became negative again. Though the recent introduction of decriminalization (2022), seems to indicate that there could be an increase in the reports, given that 2022 and 2023 percentages are bigger than the reports from 2021, which was also one the years with the lowers percentages relative to TAS and VIC's population. But , the assumption made about diagnosing more people in 2023 than in previous years due to the pandemic, applies to VIC and TAS as well and with the introduction of decriminalization in 2022, it will be a new challenge for research to find ways to separate both events since they occurred one after the other.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+aus2_TAS_VIC<- Aus3 %>% 
+  filter(State %in% c("TAS_VIC", "WA"))%>% 
+  mutate(treated4 = ifelse(State == "TAS_VIC", 1, 0), 
+         post_2005 = ifelse(diagnosis_year>= 2005 & diagnosis_year<2022 , 1,0),
+         post_2022 = ifelse(diagnosis_year>= 2022, 1,0),
+          pre_2005 = ifelse(diagnosis_year<= 2005, 1,0),
+         did_interaction4 = treated4 * post_2022)
+
+
+ggplot(data= aus2_TAS_VIC ,
+       mapping = aes(x =diagnosis_year, y = percentage, color =State))+
+  geom_point()+
+  geom_vline(xintercept = c(2006,2023),linetype = "dashed") +
+    geom_line() +
+  annotate("text", x = c(2006,2023), y = 0.0001,label = c(2006,2023),angle = 360)+ 
+    scale_color_manual( labels = c ("TAS & VIC", "WA"),values = c("dodgerblue", "magenta"))+
+  labs(title = " Number of Diagnosis Annually in TAS, VIC and WA",
+    subtitle = "Impact of Indoor Legal Purchase(2005)& Decriminalization(2022) of S.W. on HIV Diagnoses",
+    caption = "S.W means sex work",
+    x = "Year of Diagnosis",
+    y = "Number of Diagnoses",
+    color = "State")+
+  theme_minimal()
+```
+
+In the states NT and SA, the policy switched from criminalization to decriminalization in 2019 in NT while in SA it is still illegal, though fewer cases have been reported compared to WA in general. Over the years, both trends have shifted in the same direction and around the same time, the difference between years is bigger in NT and SA compared to WA's trend.
+
+In additiom, the policy is still a recent event compared to the time in which other states decided to change their regulation policy, so there are not as many observations for NT and SA states to appreciate its full effect in the percentage of people diagnosed. In the years reported after the policy, it appears to be leading to an increase in the percentage of the population who were diagnosed with HIV. This increase could mean that more people are getting comfortable at getting tested and having postive results for HIV, or a change in population that in later years fewer people will test postive for HIV as NT and SA get closer to the actual rate of infection.
+
+This trend would need to be revised to observe any shifts in the percentage of people diagnosed as the policy gets difused everywhere in NT. As of now and a couple of years before decriminalizing sex work, the gap between both trends seems to be larger compared to years prior, with WA taking the lead in having a bigger population being diagnosed with HIV.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+aus2_filtered<- Aus3 %>% 
+  filter(State %in% c("NT_SA", "WA")) %>%
+  mutate(treated1 = ifelse(State == "NT_SA", 1, 0),
+         post_2019 = ifelse(diagnosis_year>= 2019, 1,0),
+         did_interaction1 = treated1 * post_2019)
+ #, diagnosis_year>=2000)%>% 
+
+ggplot(data= aus2_filtered,
+       mapping = aes(x =diagnosis_year, y = percentage, color =State))+
+  geom_point(position = position_jitter(width = 0 #, height =0.15
+                                        ))+
+  geom_vline(xintercept = 2020,linetype = "dashed") +
+    geom_line()+
+  annotate("text", x = 2020, y = 0.00007,label = 2020,angle = 360) +
+  scale_color_manual(labels = c("NT & SA", "WA"),values = c( "green", "magenta" ))+
+  labs(title = "Number of Diagnosis Annually in NT, SA and WA",
+    subtitle = "Impact of Decriminalization Policy for Sex Work on HIV Diagnoses (2019)",
+    x = "Year of Diagnosis",
+    y = "Number of Diagnoses",
+   color = "State")+
+  theme_minimal()
+
+```
+
+For the last part, I will perform four difference-in-differences regressions and compare the average coefficients across policies; having full criminalization of sex work as the control policy to observe the effect of each new policy. For the regression of TAS and VIC, I will only use the 2005 policy because there’s more data available compared to the 2022 policy, which could lead to misinterpretation of the effect. These regressions describe if the percentage of people with HIV positive increase or decrease after a new policy and how much the percentage on average changed. The dependent variable is the annual percentage change of diagnoses in each territory; NSW/ACT, QLD, TAS/VIC, NT/SA, and WA. The independent variables are: whether the policy changed or not, and the interaction between being the place that changed the policy (any place except WA) and after it changed(after 1995,1999,2005 or 2019).
+
+From the table, the regressions are organized by the years the policies were implemented in their respective states. The coefficients represent the percentage of the population on average getting diagnosed with HIV if they are in the state that changed the policy; post-year is the average of people that get diagnosed after the policy passes in both groups and the interaction terms are the effects observed due to the new policy. Robust standard errors account for potential heteroscedasticity in the data. The general regression equation corresponding to the table is: $$y_{it} = \alpha + \beta_1 treated_i + \beta_2 post_t + \beta_3 treated_i * post_t + \epsilon_{it}$$
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| paged-print: true
+Aus4<- Aus3%>% mutate(
+ post_1995 = ifelse(State %in%c("ACT_NSW", "WA") & diagnosis_year>= 1995, 1,0 ),
+post_2005 = ifelse(State%in%c("TAS_VIC", "WA")& diagnosis_year>= 2005, 1,0),
+ post_2019 = ifelse(State%in%c("NT_SA", "WA")& diagnosis_year>= 2019,1,0),
+ post_1999 = ifelse(State%in%c( "QLD","WA")& diagnosis_year>= 1999,1,0)) %>% 
+  mutate(treated4 = ifelse(State == "NT_SA", 1, 0),
+         did_4 = treated4 * post_2019, 
+treated2 = ifelse(State == "QLD", 1, 0),
+         did_2 = treated2 * post_1999,
+treated1 = ifelse(State == "ACT_NSW", 1, 0),
+         did_1 = treated1 * post_1995,
+treated3 = ifelse(State == "TAS_VIC", 1, 0),
+         did_3 = treated3 * post_2005)
+
+model1 <- lm(percentage ~ treated1 + post_1995 + did_1, data= Aus4)
+#summary(model1)
+model2 <- lm(percentage ~ treated2 + post_1999 + did_2, data= Aus4)
+#summary(model2)
+model3<- lm(percentage ~ treated3 + post_2005 + did_3, data= Aus4)
+# summary(model3)
+model4 <- lm(percentage ~ treated4 + post_2019 + did_4, data= Aus4)
+# summary(model4)
+
+robust_se1 <- sqrt(diag(vcovHC(model1,type="HC1")))
+robust_se2 <- sqrt(diag(vcovHC(model2,type="HC1")))
+robust_se3<- sqrt(diag(vcovHC(model3,type="HC1")))
+robust_se4 <- sqrt(diag(vcovHC(model4,type="HC1")))
+# summary(model1)
+# summary(model2)
+# summary(model3)
+# summary(model4)
+
+stargazer(model1, model2, model3, model4,
+          se = list(robust_se1, robust_se2, robust_se3, robust_se4),
+          keep.stat= c("n"),
+          type = "text",
+          covariate.labels = c("NSW/ACT", "Post 1995", " Decriminalization x 1995", "QLD", "Post 1999", " Partial Legal x 1999","TAS/VIC", "Post 2005", "Indoors Legal  x 2005 ","NT/SA", "Post 2019", "Decriminalization x 2019", "Constant"), 
+          dep.var.labels = "Percentage",
+          #font.size = "tiny",
+          #column.labels = c("1995", "1999", "2005", "2019"), 
+          title = "Regression Results with Robust Standard Errors")
+```
+
+In column 1, the decriminalization of sex work in NSW and the ACT is associated with a statistically significant reduction in the percentage of HIV cases, as indicated by the negative interaction term between the post-1995 period and the policy change (−0.0001, p \< 0.01). Similarly, column 2 examines QLD, where sex work became partially legal in 1999. While the interaction term is positive and significant at the 5% level (0.00001) indicating that HIV percentages in QLD increased slightly more than in WA after the policy. However the standard error is relatively the same to the coefficient disregarding validity to such claim. Additionally, post 1999 is associated with a significant decrease in HIV percentage, suggesting mixed effects.In column 3, representing TAS and VIC, where indoor sex work was legalized in 2005, the policy change itself is not statistically significant, but the post-2005 period shows a significant decline in HIV rates, indicating that broader factors may be driving the change rather than the policy alone. Finally, column 4 analyzes the decriminalization in NT and SA after 2019. Here, the interaction term is positive and weakly significant (p \< 0.1), while the post-period independently predict statistically significant reductions in HIV percentages, this unclear direction in policy might be due to the short time in which NT and SA have been treated. This early result could indicate that in the early years of the policy, there is an increase in HIV as the state gets closer to the actual number of people and based on the results in NSW and ACT, where decriminalization has been around almost 30 years, the overall effect of the policy is a reduction in the percetage of people with HIV. Overall, the results suggest that policy changes toward decriminalization and potentially in partial legality are associated with modest but statistically significant shifts in HIV prevalence, though the effects vary by region and policy type.
+
+These results do not indicate that more progressive policies cause more people to get HIV but probably more people in general are getting tested since there are fewer repercussions and revealing HIV positive. Some coeffcients have relatively large standard errors such as in the inteaction coefficients in QLD and TAS and VIC potentially due to the mixed policies of combined states, the actions that are allowed and prohibited within the policy or demographic changes. Also, the trends seem to change direction every few years, which could indicate that there is something else that is driving the direction of the trend adding more variation within the controlled and the treated areas.
+
+The 1995 policy appears to have a negative corelation with the percentage of people diagnosed with HIV annualy . But, other factors may have been driving the reduction since before the policy, there was already a decrease in the percentage of diagnoses. The 1999, 2005, and 2019 policies, however, show positive policy effects, suggesting that more people are getting diagnosed with HIV (not increasing the infection rate), which proposes that more people are seeking healthcare since they won’t face penalties when tested for STIs. Post-period effects are consistently negative, indicating an overall reduction in diagnoses over time.
+
+To verify the significance of the effect of decriminalization on HIV percentages in NSW and ACT, I will perform a placebo test to helps assess whether the estimated effects in the real treatment year could be due to chance or unobserved factors unrelated to the policy. The table below reports the results using the placebo year of 1985. Row 3 is the calculated effect in which is statistically insignificant, suggesting that no spurious treatment effect detected in the placebo setting. This supports the validity of the main findings, as the placebo test does not falsely detect an effect where none should exist. Overall, these results strengthen confidence that the estimated impacts in the actual treatment year are likely attributable to the policy rather than random variation.However, this conclusion has limitations, factors such as healthcare access and testing practices, population size in each territory, cultural dynamics, frequency of engagement with sexual services, and the overall market size of the sex work industry are not accounted for and may influence these findings.
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+set.seed(45)
+sample(1981:1994, size = 1)
+```
+
+```{r}
+#| echo: false
+#| message: true
+#| warning: true
+#| paged-print: true
+
+
+ Aus6<- Aus3%>% mutate(
+ post_1989 = ifelse(State %in%c("ACT_NSW", "WA") & diagnosis_year>= 1989, 1,0 )) %>% 
+  mutate(treated1.1 = ifelse(State == "ACT_NSW", 1, 0))
+
+
+model1.1 <- lm(percentage ~ treated1.1*post_1989, data= Aus6)
+# summary(model1.1)
+
+robust_se1.1 <- sqrt(diag(vcovHC(model1.1,type="HC1")))
+
+stargazer(model1.1,
+          se = list(robust_se1.1),
+          keep.stat= c("n", "rsq"),
+          type = "text",
+          covariate.labels = c("NSW/ACT", "Post 1989", " Decriminalization x 1989", "Constant"), 
+          dep.var.labels = " Placebo Percentage",
+          #column.labels = c("1995", "1999", "2005", "2019"), 
+          title = "Placebo Results with Robust Standard Errors")
+```
+
+Furthermore, according to the WHO, HIV infection is more likely among sex workers thus passing more relaxed policies around sex work can encourage individuals who interact with the market to seek healthcare soon, and feel empowered to negotiate safe and clean practices as they will not feel intimidated with legal charges, seek protection and care from the authorities and health institutions.To conclude that sex work policies are connected to HIV contraction, the graph below provides insight on how diagnosed individuals contracted the virus. The graph includes the most common forms of exposure, some categories in the original data were combined for simplicity, such as the category for blood includes Haemophilia clotting disorder, injecting drug use and vertical transmission, the category for other includes undetermined exposure, no sexual contact and not available observations.
+
+The types of exposure with the highest numbers are male to male sexual contact and heterosexual contact, following the category for other (except in ACT/NSW) and blood. Based on this graph, the majority of people who are getting diagnosed with HIV have contracted the virus through sexual contact indicating a call for intervention in promoting safe sex practices and seeking care to prevent the spread to new individuals.
+
+The graph highlights a key limitation in the data: there is no category for female-to-female sexual contact, nor a broader "homosexual contact" category, which restricts the analysis. When discussing sex work, it is often framed around women as providers and men as clients, emphasizing heterosexual dynamics. However, the data here tell a different story; most HIV cases are linked to male-to-male sexual contact, suggesting men are disproportionately affected. This raises important questions: Are men more likely to seek care and therefore get diagnosed? Do men use protection less frequently? Could this pattern reflect Australia’s demographic ratios, or are women generally more risk-averse when it comes to sexually transmitted infections? To better understand the relationship between sex work and HIV transmission, it is essential to identify the populations most engaged in sex work and the types of services most commonly exchanged.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+#unique(Aus5$Exposure)
+Aus5 <- Aus %>% 
+ #filter(!Exposure %in% c("Male-to-male sexual contact", "Male-to-male sexual contact and injecting drug use")) %>%
+  mutate( Exposure = replace_na(Exposure, "Other"),
+     Exposure = case_when(
+  Exposure%in%c("Male-to-male sexual contact", "Male-to-male sexual contact and injecting drug use") ~ "Male-Male Sexual Contact",
+       TRUE ~ Exposure),
+    Exposure = case_when(
+  Exposure%in%c("Exposure to HIV remained undetermined","Other","No sexual contact","NA") ~ "Other",
+      TRUE ~ Exposure), 
+  Exposure = case_when(
+  Exposure%in%c("Haemophilia_clotting disorder", "Injecting drug use", "Vertical transmission") ~ "Blood",
+      TRUE ~ Exposure)) %>%
+  group_by(State, Exposure) %>%
+  summarise(count = n(), .groups = 'drop')
+
+  ggplot(Aus5, aes(x = State, y = count, fill = Exposure)) +
+  geom_col(position = "dodge") +
+  geom_text(aes(label = count), position = position_dodge(width = 1.03), vjust = -0.3, size = 4) +
+  labs(
+    title = "Number of HIV Exposure by State",
+    x = "State",
+    y = "Count",
+    fill = "Exposure:"
+  ) +
+  theme_minimal() +
+    scale_x_discrete(labels = c("ACT/NSW", "NT/SA","QLD","TAS/VIC","WA"))+
+  theme( #axis.text.x = element_text(angle = 45,hjust = .5),
+    legend.position = "bottom",
+    legend.key.size = unit(0.3, "cm"), 
+    legend.text = element_text(size = 10), 
+    legend.title = element_text(size = 10))
+
+#Aus%>%count(Sex)
+
+
+```
+
+Additional observations are that TAS/VIC has almost half as many people as ACT/NSW who contracted HIV through male-to-male sexual contact, while NT/SA and WA have roughly similar numbers. Though, the figures might change as more people learn about the 2019 and 2022 policies in NT/SA and TAS/VIC, and as HIV detection technology and healthcare access improve. In QLD under partial legalization and WA under criminalization exhibit similar numbers for heterosexual exposure, while male to male sexual contact falls short in WA.
+
+Over the long run, new policy changes could help identify which groups would benefit from targeted prevention campaigns if it becomes a topic of interest. Until now, these recent policies act as a weakness in my results since these policies are still relatively unknown, and sometimes delayed, which impedes fully observing if more flexible policies lead to significant changes in people’s behavior, such as seeking healthcare sooner and how we think about sex work in a growing market.
+
+```{r}
+#| eval: false
+#| message: false
+#| warning: false
+#| include: false
+Aus%>% 
+    filter(Exposure%in%c("Male-to-male sexual contact and injecting drug use", "Male-to-male sexual contact")) %>% 
+  mutate( Exposure = case_when(
+  Exposure%in%c("Male-to-male sexual contact", "Male-to-male sexual contact and injecting drug use") ~ "Male to Male Sexual Contact",
+      TRUE ~ Exposure))%>% 
+  group_by(State) %>% 
+  summarise(count = n(), .groups = 'drop')%>%
+  ggplot(., aes(x = State, y = count)) +
+  geom_col(position = "dodge", fill= "turquoise") +
+  geom_text(aes(label = count), position = position_dodge(width = 0.8), vjust = -0.3, size = 4) +
+  labs(
+    title = "HIV Exposure by Male to Male Sexual Contact by State",
+    x = "State",
+    y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+The data across states reveal a clear pattern; ACT/NSW consistently records the highest number of HIV exposures across all categories, followed by TAS/VIC, then QLD, with WA and NT/SA alternating in rank. This ordering broadly reflects state population sizes, as NSW is the most populated state, followed by VIC, QLD, WA, SA, TAS, and NT;with ACT located within NSW. Importantly, while policy changes are often associated with an increase in HIV diagnoses during the initial years of implementation, this should not be interpreted as evidence that the policies themselves directly increase HIV transmission. Rather, these increases may reflect greater engagement with health services, improved access to testing, or reduced stigma, all of which encourage individuals to seek care independent of the policy itself. Additionally, higher diagnosis rates may result from broader healthcare initiatives, such as public health campaigns targeting high-risk populations, rather than being solely attributable to sex work regulation. These contextual factors highlight the need for more robust empirical strategies to isolate the specific effects of sex work policies on HIV outcomes, as well as caution when generalizing findings to other countries with distinct healthcare systems, cultural norms, and legal frameworks.
+
+## Conclusion:
+
+The results suggest that more progressive policies on sex work, especially decriminalization, are associated with decreased HIV diagnoses, likely because individuals are more willing to seek testing and healthcare without fear of legal repercussions. In QLD, with its most recent progressive policy, an increase in diagnoses was reported, supporting the idea that relaxed policies encourage people to get tested. On the other hand, states like TAS/VIC, with more conservative approaches, reported fewer diagnoses. It is important to note that the impact of these policies is also shaped by regional factors such as the size of the sex work industry, public awareness, and healthcare access. Further research is needed to fully assess the long-term effects of these policies and explore how prevention and health campaigns can better target the populations most at risk.
+
+Lastly, some potential avenues for future research that could deepen the understanding of how sex work policies influence HIV diagnoses include, examining the role of healthcare accessibility in shaping outcomes, investigating the behavioral patterns of sex workers and clients under progressive policies, and expanding the analysis to other countries with varying legal frameworks and cultural contexts. Additionally, panel studies could help disentangle the immediate versus long-term effects of decriminalization, while more detailed data on exposure categories would provide clearer insights into how policy interacts with specific risk groups. Together, these directions would not only improve the evidence base on the links between sex work regulation and HIV but also help inform more effective public health and policy strategies worldwide.
+
+References:
+
+Australian Bureau of Statistics. (2024, December). National, state and territory population. ABS. https://www.abs.gov.au/statistics/people/population/national-state-and-territory-population/latest-release.
+
+HIV. Data \@ Kirby Institute. (n.d.). https://www.data.kirby.unsw.edu.au/hiv
+
+Karlsson, H. (2022, June 14).Sex work policy worldwide: A scoping review - sexuality & culture. SpringerLink.https://link.springer.com/article/10.1007/s12119-022-09983-5
+
+Lucas S. The river: A journey back to the source of HIV and AIDS. BMJ. 2000 May 27;320(7247):1481A. PMID: 10827067; PMCID: PMC1127661.
+
+Mapping - country list. Global network of sex work projects. (n.d.). https://www.nswp.org/sex-work-laws-map/country-list
+
+NSWP. (n.d.). Western Australia (Australia). Global Network of Sex Work Projects. Retrieved August 22, 2025, from https://www.nswp.org/country/western-australia-australia
+
+Prostitution laws in Australia.Coalition Against Trafficking in Women Australia. (n.d.). https://www.catwa.org.au/prostitution-laws-in-each-state/
+
+WorldAtlas. (2017, August 1). The largest states and territories of Australia. Retrieved August 22, 2025, from https://www.worldatlas.com/articles/the-largest-states-and-territories-of-australia.html
+
+World Health Organization. (n.d.). Sex workers. World Health Organization. https://www.who.int/teams/global-hiv-hepatitis-and-stis-programmes/populations/sex-workers
